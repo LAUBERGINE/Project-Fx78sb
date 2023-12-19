@@ -1,13 +1,12 @@
-import vt
 import os
 import discord
 from dotenv import load_dotenv
 from discord.ext import commands
-import aiohttp
-import json
 import requests
 import whois
-import datetime
+import socket
+import string
+import random
 
 load_dotenv()
 
@@ -20,7 +19,7 @@ async def get_vt_reputation(file_hash):
         if data['response_code'] == 0:
             nobddEmbed = discord.Embed(colour=discord.Colour.dark_orange(), title='HASH INCONNU')
             nobddEmbed.add_field(name="**Hash du Fichier**", value=f"{file_hash}", inline=False)
-            nobddEmbed.add_field(name="**Explication**", value="Nous utilisons la base de donnée de Virus Total, se Hash n'as pas était reperctorié", inline=False)
+            nobddEmbed.add_field(name="**Explication**", value="Nous utilisons la base de donnée de Virus Total, ce Hash n'as pas était reperctorié", inline=False)
             return nobddEmbed
         else:
             positives = data['positives']
@@ -45,14 +44,17 @@ async def get_location(ip_address):
     try:
         response = requests.get(f"http://ip-api.com/json/{ip_address}")
         data = response.json()
+        domain_name = get_domain_from_ip(ip_address)
+
         if data['status'] == 'success':
             whereipEmbed = discord.Embed(colour=discord.Colour.purple(), title='Adresse IP')
             whereipEmbed.add_field(name="**IP**", value=f"**{data['query']}**", inline=False)
             whereipEmbed.add_field(name="**NOM**", value=f"{data['org']}", inline=False)
             whereipEmbed.add_field(name="**PAYS**", value=f"{data['country']}", inline=False)
-            whereipEmbed.add_field(name="**REGION**", value=f"{data['regionName']}", inline=False) 
+            whereipEmbed.add_field(name="**REGION**", value=f"{data['regionName']}", inline=False)
             whereipEmbed.add_field(name="**CODE POSTAL**", value=f"{data['zip']}", inline=False)
             whereipEmbed.add_field(name="**VILLE**", value=f"{data['city']}", inline=False)
+            whereipEmbed.add_field(name="**DOMAINE**", value=f"{domain_name}", inline=False)
             return whereipEmbed
         else:
             nowhereipEmbed = discord.Embed(colour=discord.Colour.dark_red(), title='La requête a échoué')
@@ -62,6 +64,7 @@ async def get_location(ip_address):
         ErrorEmbed = discord.Embed(colour=discord.Colour.dark_red(), title='ERROR')
         ErrorEmbed.add_field(name="**ERROR**", value=f"**Une erreur s'est produite: {e}**", inline=False)
         return ErrorEmbed
+
 
 async def get_domain_reputation(domain):
     try:
@@ -79,8 +82,10 @@ async def get_domain_reputation(domain):
 
             creation_date = format_date(domain_info.creation_date)
             expiration_date = format_date(domain_info.expiration_date)
+            ip = get_ip_from_domain(domain)
 
             DomainEmbed = discord.Embed(title=f"INFO SUR LE DOMAIN `{domain}`",color=discord.Color.blue())
+            DomainEmbed.add_field(name="**IP**", value=f"{ip}", inline=False)
             DomainEmbed.add_field(name="**HEBERGEUR**", value=f"{domain_info.registrar}", inline=False)
             DomainEmbed.add_field(name="**DATE DE CREATION**", value=f"{creation_date}", inline=True)
             DomainEmbed.add_field(name="**DATE D'EXPIRATION**", value=f"{expiration_date}", inline=True)
@@ -107,3 +112,58 @@ def format_date(date):
         return date.strftime('%Y-%m-%d %H:%M:%S')
     else:
         return "N/A"
+
+def get_domain_from_ip(ip_address):
+    try:
+        domain_name, _, _ = socket.gethostbyaddr(ip_address)
+        return domain_name
+    except socket.herror as e:
+        return f"🟥"
+    
+def get_ip_from_domain(domain_name):
+    try:
+        ip_address = socket.gethostbyname(domain_name)
+        return ip_address
+    except socket.gaierror as e:
+        return f"🟥"
+    
+def generer_mot_de_passe(longueur=12):
+    caracteres = string.ascii_letters + string.digits + "+-*!?&@#$"
+    
+    while True:
+        mot_de_passe = ''.join(random.choice(caracteres) for _ in range(longueur))
+        if any(c.isupper() for c in mot_de_passe) and any(c.islower() for c in mot_de_passe) \
+                and any(c.isdigit() for c in mot_de_passe) and any(c in "+-*!?" for c in mot_de_passe):
+            return mot_de_passe
+        
+def evaluation_mot_de_passe(mot_de_passe):
+
+    if len(mot_de_passe) < 10:
+        return "Le mot de passe est trop court."
+
+    if not any(c.isupper() for c in mot_de_passe):
+        return "Le mot de passe doit contenir au moins une lettre majuscule."
+
+    if not any(c.islower() for c in mot_de_passe):
+        return "Le mot de passe doit contenir au moins une lettre minuscule."
+
+    if not any(c.isdigit() for c in mot_de_passe):
+        return "Le mot de passe doit contenir au moins un chiffre."
+
+    caractere_special = set("!@#$%^&*(),.?\":{}|<>")
+    if not any(c in caractere_special for c in mot_de_passe):
+        return "Le mot de passe doit contenir au moins un caractère spécial."
+
+    return "Le mot de passe semble etre bon !"
+
+def get_mac_info(mac_address):
+    api_url = f"https://api.macvendors.com/{mac_address}"
+    
+    try:
+        response = requests.get(api_url)
+        if response.status_code == 200:
+            return f"**Le constructeur est :** {response.text}"
+        else:
+            return f"Error **{response.status_code}** l'adresse n'existe pas"
+    except requests.exceptions.RequestException as e:
+        return f"Error {e}"
